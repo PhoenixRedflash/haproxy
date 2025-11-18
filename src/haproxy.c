@@ -2452,11 +2452,17 @@ static void step_init_2(int argc, char** argv)
  */
 static void step_init_3(void)
 {
-
-	signal_register_fct(SIGQUIT, dump, SIGQUIT);
-	signal_register_fct(SIGUSR1, sig_soft_stop, SIGUSR1);
-	signal_register_fct(SIGHUP, sig_dump_state, SIGHUP);
-	signal_register_fct(SIGUSR2, NULL, 0);
+	if (master) {
+		signal_register_fct(SIGQUIT, NULL, 0);
+		signal_register_fct(SIGUSR1, NULL, 0);
+		signal_register_fct(SIGHUP, NULL, 0);
+		signal_register_fct(SIGUSR2, NULL, 0);
+	} else {
+		signal_register_fct(SIGQUIT, dump, SIGQUIT);
+		signal_register_fct(SIGUSR1, sig_soft_stop, SIGUSR1);
+		signal_register_fct(SIGHUP, sig_dump_state, SIGHUP);
+		signal_register_fct(SIGUSR2, NULL, 0);
+	}
 
 	/* Always catch SIGPIPE even on platforms which define MSG_NOSIGNAL.
 	 * Some recent FreeBSD setups report broken pipes, and MSG_NOSIGNAL
@@ -2601,6 +2607,7 @@ static void run_master_in_recovery_mode(int argc, char **argv)
 		global.mode |= MODE_QUIET; /* ensure that we won't say anything from now */
 	}
 
+	mworker_unblock_signals();
 	/* enter in master polling loop */
 	mworker_run_master();
 }
@@ -3165,7 +3172,6 @@ int main(int argc, char **argv)
 	struct cfgfile *cfg, *cfg_tmp;
 	struct ring *tmp_startup_logs = NULL;
 	struct mworker_proc *proc;
-	char *msg = "READY\n";
 
 	/* Catch broken toolchains */
 	if (sizeof(long) != sizeof(void *) || (intovf + 0x7FFFFFFF >= intovf)) {
@@ -3712,6 +3718,8 @@ int main(int argc, char **argv)
 	 * message received from the worker to the launching process, see _send_status().
 	 */
 	if ((global.mode & MODE_DAEMON) && !(global.mode & MODE_MWORKER)) {
+		const char *msg = "READY\n";
+
 		if (write(daemon_fd[1], msg, strlen(msg)) < 0) {
 			ha_alert("[%s.main()] Failed to write into pipe with parent process: %s\n", progname, strerror(errno));
 			exit(1);
